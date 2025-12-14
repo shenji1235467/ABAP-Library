@@ -1,6 +1,5 @@
 CLASS zcl_bc_gui_toolkit DEFINITION
-  PUBLIC
-  FINAL
+  PUBLIC FINAL
   CREATE PUBLIC.
 
   PUBLIC SECTION.
@@ -19,9 +18,17 @@ CLASS zcl_bc_gui_toolkit DEFINITION
         ftab   TYPE tdt_d021s,
       END OF t_dynpro_attr.
     TYPES tt_dynpro_attr TYPE HASHED TABLE OF t_dynpro_attr
-                                       WITH UNIQUE KEY primary_key COMPONENTS dylang
-                                                                              dyname
-                                                                              dynumb.
+                                               WITH UNIQUE KEY primary_key COMPONENTS dylang
+                                                                                      dyname
+                                                                                      dynumb.
+
+    TYPES:
+      BEGIN OF t_fsd,
+        filename    TYPE string,
+        path        TYPE string,
+        fullpath    TYPE string,
+        user_action TYPE i,
+      END OF t_fsd.
 
     CONSTANTS c_display_mode_popup       TYPE zbcd_log_disp VALUE 'P' ##NO_TEXT.
     CONSTANTS c_display_mode_popup_light TYPE zbcd_log_disp VALUE 'L' ##NO_TEXT.
@@ -136,11 +143,14 @@ CLASS zcl_bc_gui_toolkit DEFINITION
     CLASS-METHODS download_excel_template
       IMPORTING iv_str                   TYPE dd02l-tabname
                 iv_replace_turkish_chars TYPE abap_bool          DEFAULT abap_false
-                it_col                   TYPE zbctt_column_excel OPTIONAL.
+                it_col                   TYPE zbctt_column_excel OPTIONAL
+                VALUE(iv_csv)            TYPE abap_bool          DEFAULT abap_false
+                VALUE(iv_fname)          TYPE abap_bool          DEFAULT abap_false.
 
     CLASS-METHODS download_file
-      IMPORTING iv_filename TYPE string OPTIONAL
-                ir_filedata TYPE REF TO data.
+      IMPORTING iv_filename   TYPE string    OPTIONAL
+                ir_filedata   TYPE REF TO data
+                VALUE(iv_csv) TYPE abap_bool DEFAULT abap_false.
 
     CLASS-METHODS download_file_with_dialog
       IMPORTING ir_filedata      TYPE REF TO data
@@ -176,13 +186,6 @@ CLASS zcl_bc_gui_toolkit DEFINITION
                 iv_message TYPE text100.
 
   PRIVATE SECTION.
-    TYPES:
-      BEGIN OF t_fsd,
-        filename    TYPE string,
-        path        TYPE string,
-        fullpath    TYPE string,
-        user_action TYPE i,
-      END OF t_fsd.
     TYPES tt_txw_note TYPE STANDARD TABLE OF txw_note WITH DEFAULT KEY.
 
     CLASS-DATA gv_top_node TYPE lvc_nkey.
@@ -204,11 +207,11 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD call_slg1_for_intid.
-    DATA: lv_spanm TYPE thour,
-          lv_bdate TYPE begda,
+    DATA: lv_bdate TYPE begda,
           lv_btime TYPE beguz,
           lv_edate TYPE begda,
-          lv_etime TYPE beguz.
+          lv_etime TYPE beguz,
+          lv_spanm TYPE thour.
 
     DATA(ls_def) = zcl_bc_int_master=>get_integration_def( iv_intid ).
 
@@ -379,9 +382,9 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD display_applog_msg.
-    DATA: lv_lineno          TYPE msgzeile,
-          lt_msgf            TYPE esp1_message_tab_type,
-          ls_display_profile TYPE bal_s_prof.
+    DATA: lt_msgf            TYPE esp1_message_tab_type,
+          ls_display_profile TYPE bal_s_prof,
+          lv_lineno          TYPE msgzeile.
 
     " Basit Pop Up mesaj
     IF iv_display_mode = c_display_mode_popup_light.
@@ -476,6 +479,7 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
   ENDMETHOD. " show_messages
 
   METHOD display_cx_msg_deepest.
+    " TODO: variable is assigned but never used (ABAP cleaner)
     DATA(lo_deepest_exception) = get_deepest_exception( io_cx ).
     display_cx_msg_i( get_deepest_exception( io_cx ) ).
   ENDMETHOD.
@@ -490,13 +494,11 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
   METHOD convert_any_input_to_data.
     DATA lv_field_type      TYPE c LENGTH 1.
-    DATA lv_decimals_target TYPE i.
     DATA lv_decimals        TYPE i.
-    DATA lv_darlv_number    TYPE c LENGTH 12 VALUE '1234567890 '.
-    DATA : lv_char  TYPE c LENGTH 20,
-           lv_float TYPE f.
-
+    DATA lv_decimals_target TYPE i.
     FIELD-SYMBOLS <fs_type_x> TYPE x.
+
+    DATA lv_darlv_number TYPE c LENGTH 12 VALUE '1234567890 '.
 
     DESCRIBE FIELD cv_target TYPE lv_field_type.
 
@@ -580,6 +582,8 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
         ENDIF.
       WHEN 'P'.
         DESCRIBE FIELD cv_target DECIMALS lv_decimals_target.
+        DATA : lv_char  TYPE c LENGTH 20,
+               lv_float TYPE f.
 
         lv_char = iv_source.
         CALL FUNCTION 'OIU_ME_CHAR_TO_NUMBER'
@@ -655,6 +659,7 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
     APPEND INITIAL LINE TO <lt_column> ASSIGNING <ls_column>.
     LOOP AT lt_fcat ASSIGNING <ls_fcat>.
+
       ASSIGN COMPONENT <ls_fcat>-fieldname OF STRUCTURE <ls_column> TO FIELD-SYMBOL(<lv_column>).
       READ TABLE lt_col WITH KEY fieldname = <ls_fcat>-fieldname
            ASSIGNING FIELD-SYMBOL(<ls_col>) BINARY SEARCH.
@@ -672,12 +677,23 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
     APPEND INITIAL LINE TO <lt_column> ASSIGNING <ls_column>.
     LOOP AT lt_fcat ASSIGNING <ls_fcat>.
+
       ASSIGN COMPONENT <ls_fcat>-fieldname OF STRUCTURE <ls_column> TO <lv_column>.
       SHIFT <ls_fcat>-intlen LEFT DELETING LEADING '0'.
-      <lv_column> = |{ <ls_fcat>-datatype }{ <ls_fcat>-intlen }|.
+      IF iv_fname = abap_true.
+        <lv_column> = <ls_fcat>-fieldname.
+      ELSE.
+        <lv_column> = |{ <ls_fcat>-datatype }{ <ls_fcat>-intlen }|.
+      ENDIF.
+
+      IF iv_replace_turkish_chars = abap_true.
+        zcl_bc_text_toolkit=>replace_turkish_characters( CHANGING cv_text = <lv_column> ).
+      ENDIF.
+
     ENDLOOP.
 
-    zcl_bc_gui_toolkit=>download_file( REF #( <lt_column> ) ).
+    zcl_bc_gui_toolkit=>download_file( ir_filedata = REF #( <lt_column> )
+                                       iv_csv      = iv_csv ).
   ENDMETHOD.
 
   METHOD write_cx_msg_matryoshka.
@@ -691,11 +707,8 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
   METHOD convert_any_input_to_output.
     DATA lv_field_type      TYPE c LENGTH 1.
-    DATA lv_fmname          TYPE char80.
-    DATA lv_int             TYPE i.
     DATA lv_decimals_target TYPE i.
-    DATA lv_decimalx        TYPE p LENGTH 8 DECIMALS 3.
-
+    DATA lv_fmname          TYPE char80.
     FIELD-SYMBOLS <fs_type_x> TYPE x.
 
     IF iv_refvalue IS NOT INITIAL.
@@ -740,6 +753,7 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
         ASSIGN iv_source TO <fs_type_x>.
         cv_target = <fs_type_x>.
       WHEN 'N'.
+        DATA lv_int TYPE i.
         lv_int = iv_source.
         cv_target = lv_int.
         CONDENSE cv_target.
@@ -750,6 +764,8 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
         DESCRIBE FIELD iv_source DECIMALS lv_decimals_target.
         WRITE iv_source TO cv_target DECIMALS lv_decimals_target.
       WHEN 'F'.
+        DATA lv_decimalx TYPE p LENGTH 8 DECIMALS 3.
+
         CALL FUNCTION 'MURC_ROUND_FLOAT_TO_PACKED'
           EXPORTING  if_float  = iv_source
           IMPORTING  ef_packed = lv_decimalx
@@ -782,9 +798,8 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
     LOOP AT lt_note
          INTO DATA(ls_line)
-         WHERE (
-                 line IS NOT INITIAL
-                                     AND line <> lv_intro ).
+         WHERE     line IS NOT INITIAL
+               AND line <> lv_intro.
 
       CONDENSE ls_line-line.
       APPEND VALUE #( trkorr = ls_line-line ) TO rt_trkorr.
@@ -833,20 +848,18 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
                         WHEN zcl_bc_applog_facade=>c_msgty_w THEN c_icon_yellow
 
                         ELSE                                      c_icon_gray ).
-  ENDMETHOD. " get_msgty_icon
+  ENDMETHOD.
 
   METHOD download_file.
+    DATA lt_text TYPE truxs_t_text_data.
     FIELD-SYMBOLS <lt_filedata> TYPE STANDARD TABLE.
 
     ASSIGN ir_filedata->* TO <lt_filedata>.
-    IF sy-subrc <> 0.
-      RETURN.
-    ENDIF.
+    CHECK sy-subrc = 0.
 
-    DATA(lv_filename) = iv_filename.
-
-    IF lv_filename IS INITIAL.
-
+    IF iv_filename IS NOT INITIAL.
+      DATA(lv_filename) = iv_filename.
+    ELSE.
       TRY.
           cl_gui_frontend_services=>directory_browse( EXPORTING window_title    = CONV #( TEXT-003 )
                                                       CHANGING  selected_folder = lv_filename ).
@@ -854,53 +867,102 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
           MESSAGE lx_root TYPE 'S' DISPLAY LIKE 'E'.
           RETURN.
       ENDTRY.
-      IF lv_filename IS INITIAL.
+
+      CHECK lv_filename IS NOT INITIAL.
+    ENDIF.
+
+    CASE iv_csv.
+      WHEN abap_true.
+        ##FM_SUBRC_OK
+        CALL FUNCTION 'SAP_CONVERT_TO_CSV_FORMAT'
+          TABLES     i_tab_sap_data       = <lt_filedata>
+          CHANGING   i_tab_converted_data = lt_text
+          EXCEPTIONS conversion_failed    = 1
+                     OTHERS               = 2.
+
+        CONCATENATE lv_filename '\template.csv' INTO lv_filename.
+
+        CALL FUNCTION 'GUI_DOWNLOAD'
+          EXPORTING  filename                = lv_filename
+          TABLES     data_tab                = lt_text
+          EXCEPTIONS file_write_error        = 1
+                     no_batch                = 2
+                     gui_refuse_filetransfer = 3
+                     invalid_type            = 4
+                     no_authority            = 5
+                     unknown_error           = 6
+                     header_not_allowed      = 7
+                     separator_not_allowed   = 8
+                     filesize_not_allowed    = 9
+                     header_too_long         = 10
+                     dp_error_create         = 11
+                     dp_error_send           = 12
+                     dp_error_write          = 13
+                     unknown_dp_error        = 14
+                     access_denied           = 15
+                     dp_out_of_memory        = 16
+                     disk_full               = 17
+                     dp_timeout              = 18
+                     file_not_found          = 19
+                     dataprovider_exception  = 20
+                     control_flush_error     = 21
+                     OTHERS                  = 22 ##NUMBER_OK.
+
+        IF sy-subrc <> 0.
+          MESSAGE ID sy-msgid TYPE 'I' NUMBER sy-msgno
+                  WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+                  DISPLAY LIKE 'E'.
+        ENDIF.
+
         RETURN.
-      ENDIF.
 
-      CONCATENATE lv_filename '\template.xls' INTO lv_filename.
-    ENDIF.
-    CALL FUNCTION 'GUI_DOWNLOAD'
-      EXPORTING  filename                = lv_filename
-                 write_field_separator   = 'X'
-      TABLES     data_tab                = <lt_filedata>
-      EXCEPTIONS file_write_error        = 1
-                 no_batch                = 2
-                 gui_refuse_filetransfer = 3
-                 invalid_type            = 4
-                 no_authority            = 5
-                 unknown_error           = 6
-                 header_not_allowed      = 7
-                 separator_not_allowed   = 8
-                 filesize_not_allowed    = 9
-                 header_too_long         = 10
-                 dp_error_create         = 11
-                 dp_error_send           = 12
-                 dp_error_write          = 13
-                 unknown_dp_error        = 14
-                 access_denied           = 15
-                 dp_out_of_memory        = 16
-                 disk_full               = 17
-                 dp_timeout              = 18
-                 file_not_found          = 19
-                 dataprovider_exception  = 20
-                 control_flush_error     = 21
-                 OTHERS                  = 22 ##NUMBER_OK.
+      WHEN abap_false.
+        CONCATENATE lv_filename '\template.xls' INTO lv_filename.
 
-    IF sy-subrc <> 0.
-      MESSAGE ID sy-msgid TYPE 'I' NUMBER sy-msgno
-              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
-              DISPLAY LIKE 'E'.
-    ELSE.
-      MESSAGE i000(zsd) WITH lv_filename TEXT-004 ##MG_MISSING.
-    ENDIF.
+        CALL FUNCTION 'GUI_DOWNLOAD'
+          EXPORTING  filename                = lv_filename
+                     write_field_separator   = abap_true
+          TABLES     data_tab                = <lt_filedata>
+          EXCEPTIONS file_write_error        = 1
+                     no_batch                = 2
+                     gui_refuse_filetransfer = 3
+                     invalid_type            = 4
+                     no_authority            = 5
+                     unknown_error           = 6
+                     header_not_allowed      = 7
+                     separator_not_allowed   = 8
+                     filesize_not_allowed    = 9
+                     header_too_long         = 10
+                     dp_error_create         = 11
+                     dp_error_send           = 12
+                     dp_error_write          = 13
+                     unknown_dp_error        = 14
+                     access_denied           = 15
+                     dp_out_of_memory        = 16
+                     disk_full               = 17
+                     dp_timeout              = 18
+                     file_not_found          = 19
+                     dataprovider_exception  = 20
+                     control_flush_error     = 21
+                     OTHERS                  = 22 ##NUMBER_OK.
+
+        IF sy-subrc <> 0.
+          MESSAGE ID sy-msgid TYPE 'I' NUMBER sy-msgno
+                  WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+                  DISPLAY LIKE 'E'.
+        ENDIF.
+
+        RETURN.
+    ENDCASE.
+
+    MESSAGE i000(zsd) WITH lv_filename TEXT-004 ##MG_MISSING.
   ENDMETHOD.
 
   METHOD gui_message.
-    DATA: lv_rate    TYPE i,
-          lv_index   TYPE c LENGTH 8,
+    DATA: lv_index   TYPE c LENGTH 8,
           lv_level   TYPE c LENGTH 2,
-          lv_message TYPE c LENGTH 132.
+          lv_message TYPE c LENGTH 132,
+          lv_rate    TYPE i.
 
     lv_rate = iv_index * 100 / iv_level.
 
@@ -965,12 +1027,11 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_file.
-    DATA: lt_filelist TYPE filetable,
-          lv_rc       TYPE i,
+    DATA: lv_rc       TYPE i,
+          lt_filelist TYPE filetable,
           lv_desktop  TYPE string.
 
-    CLEAR: lt_filelist[],
-           lv_rc.
+    CLEAR lt_filelist[].
 
     TRY.
 
@@ -1010,12 +1071,15 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD display_transport_requests.
-    ycl_addict_gui_toolkit=>display_transport_requests( VALUE #( FOR _trkorr IN it_trkorr ( _trkorr-trkorr ) ) ).
+    ycl_addict_gui_toolkit=>display_transport_requests( VALUE #( FOR _trkorr IN it_trkorr
+                                                                 ( _trkorr-trkorr ) ) ).
   ENDMETHOD.
 
   METHOD sapgui_mess.
-    DATA : lv_mod   TYPE i,
-           lv_yuzde TYPE i.
+    " TODO: parameter IV_LEN is never used (ABAP cleaner)
+
+    DATA : lv_yuzde TYPE i,
+           lv_mod   TYPE i.
 
     lv_mod = iv_akt MOD 10.
     IF lv_mod <> 0.
@@ -1044,7 +1108,7 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
       TABLES     dd03p_n        = rt_def
       EXCEPTIONS internal_error = 1.
 
-    IF sy-subrc = 0 AND lines(  rt_def ) > 0.
+    IF sy-subrc = 0 AND lines( rt_def ) > 0.
       ##FM_SUBRC_OK
       CALL FUNCTION 'DD_TABL_EXPAND'
         EXPORTING  dd02v_wa          = ls_dd02v_n
@@ -1119,8 +1183,6 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
 
     DATA : lt_comp TYPE TABLE OF rstrucinfo,
            lt_disp TYPE TABLE OF ty_disp.
-    DATA : ls_icols TYPE help_value,
-           lt_icols TYPE TABLE OF help_value.
 
     CALL FUNCTION 'GET_COMPONENT_LIST'
       EXPORTING program    = iv_repid
@@ -1128,6 +1190,9 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
       TABLES    components = lt_comp[].
 
     lt_disp = CORRESPONDING #( lt_comp ).
+
+    DATA : lt_icols TYPE TABLE OF help_value,
+           ls_icols TYPE help_value.
 
     ls_icols-tabname    = 'DD03D'.
     ls_icols-fieldname  = 'FIELDNAME'.
@@ -1147,6 +1212,8 @@ CLASS zcl_bc_gui_toolkit IMPLEMENTATION.
     CALL FUNCTION 'MD_POPUP_SHOW_INTERNAL_TABLE'
       ##FM_SUBRC_OK
       EXPORTING  title   = TEXT-001
+*    importing
+*                 index   =
       TABLES     values  = lt_disp[]
                  columns = lt_icols[]
       EXCEPTIONS leave   = 1

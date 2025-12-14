@@ -1,6 +1,5 @@
 CLASS zcl_bc_mail_excel_attachment DEFINITION
-  PUBLIC
-  FINAL
+  PUBLIC FINAL
   CREATE PRIVATE.
 
   PUBLIC SECTION.
@@ -10,6 +9,11 @@ CLASS zcl_bc_mail_excel_attachment DEFINITION
 
     CLASS-METHODS get_excel_columns_of_table
       IMPORTING tabname       TYPE tabname
+      RETURNING VALUE(result) TYPE zsdtt_column.
+
+    CLASS-METHODS get_excel_cols_of_tab_in_lang
+      IMPORTING tabname       TYPE tabname
+                !language     TYPE sylangu
       RETURNING VALUE(result) TYPE zsdtt_column.
 
     CLASS-METHODS create
@@ -33,6 +37,15 @@ CLASS zcl_bc_mail_excel_attachment DEFINITION
   PRIVATE SECTION.
     DATA: xls            TYPE zbcs_mail_excel_attachment,
           bin_attachment TYPE zbcs_mail_attachment_bin.
+
+    CLASS-METHODS translate_fcat
+      IMPORTING tabname   TYPE tabname
+                !language TYPE sylangu
+      CHANGING  fcat      TYPE slis_t_fieldcat_alv.
+
+    CLASS-METHODS complete_fcat_rollnames
+      IMPORTING tabname TYPE tabname
+      CHANGING  fcat    TYPE slis_t_fieldcat_alv.
 
     METHODS constructor IMPORTING xls TYPE zbcs_mail_excel_attachment.
 ENDCLASS.
@@ -67,6 +80,27 @@ CLASS zcl_bc_mail_excel_attachment IMPLEMENTATION.
                  OTHERS                 = 3.
 
     CHECK sy-subrc = 0.
+
+    result = get_excel_columns_of_fcat( fcat ).
+  ENDMETHOD.
+
+  METHOD get_excel_cols_of_tab_in_lang.
+    DATA fcat TYPE slis_t_fieldcat_alv.
+
+    CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+      EXPORTING  i_structure_name       = tabname
+      CHANGING   ct_fieldcat            = fcat
+      EXCEPTIONS inconsistent_interface = 1
+                 program_error          = 2
+                 OTHERS                 = 3.
+
+    CHECK sy-subrc = 0.
+
+    IF language <> sy-langu.
+      translate_fcat( EXPORTING tabname  = tabname
+                                language = language
+                      CHANGING  fcat     = fcat ).
+    ENDIF.
 
     result = get_excel_columns_of_fcat( fcat ).
   ENDMETHOD.
@@ -114,9 +148,7 @@ CLASS zcl_bc_mail_excel_attachment IMPLEMENTATION.
         element_type ?= <xls_col>-type.
         DATA(ddic_field) = element_type->get_ddic_field( ).
 
-        READ TABLE me->xls-columns
-             ASSIGNING FIELD-SYMBOL(<ls_columns>)
-             WITH KEY zcolumn = zcolumn.
+        ASSIGN me->xls-columns[ zcolumn = zcolumn ] TO FIELD-SYMBOL(<ls_columns>).
 
         IF sy-subrc = 0.
           ddic_field-scrtext_l = <ls_columns>-zcolumn_txt.
@@ -163,6 +195,55 @@ CLASS zcl_bc_mail_excel_attachment IMPLEMENTATION.
     ENDIF.
 
     result = me->bin_attachment.
+  ENDMETHOD.
+
+  METHOD translate_fcat.
+    complete_fcat_rollnames( EXPORTING tabname = tabname
+                             CHANGING  fcat    = fcat ).
+
+    ##ITAB_KEY_IN_SELECT
+    SELECT FROM @fcat AS fcat
+                INNER JOIN dd04t
+                  ON dd04t~rollname = fcat~rollname
+           FIELDS dd04t~rollname, dd04t~ddtext, dd04t~reptext, dd04t~scrtext_s, dd04t~scrtext_m, dd04t~scrtext_l
+           WHERE fcat~rollname    <> @space
+             AND dd04t~ddlanguage  = @language
+           ORDER BY dd04t~rollname
+           INTO TABLE @DATA(dtel_texts).
+
+    LOOP AT fcat REFERENCE INTO DATA(fcat_row) WHERE rollname IS NOT INITIAL.
+      READ TABLE dtel_texts ASSIGNING FIELD-SYMBOL(<dtel_text>)
+           WITH KEY rollname = fcat_row->rollname
+           BINARY SEARCH.
+
+      CHECK sy-subrc = 0.
+
+      fcat_row->ddictxt      = <dtel_text>-ddtext.
+      fcat_row->reptext_ddic = <dtel_text>-reptext.
+      fcat_row->seltext_l    = <dtel_text>-scrtext_l.
+      fcat_row->seltext_m    = <dtel_text>-scrtext_m.
+      fcat_row->seltext_s    = <dtel_text>-scrtext_s.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD complete_fcat_rollnames.
+    CHECK line_exists( fcat[ rollname = space ] ).
+
+    SELECT FROM dd03l
+           FIELDS fieldname, rollname
+           WHERE tabname = @tabname
+           ORDER BY fieldname
+           INTO TABLE @DATA(dd03ls).
+
+    LOOP AT fcat REFERENCE INTO DATA(fcat_row) WHERE rollname IS INITIAL.
+      READ TABLE dd03ls ASSIGNING FIELD-SYMBOL(<dd03l>)
+           WITH KEY fieldname = fcat_row->fieldname
+           BINARY SEARCH.
+
+      CHECK sy-subrc = 0.
+
+      fcat_row->rollname = <dd03l>-rollname.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD constructor.

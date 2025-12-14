@@ -30,6 +30,10 @@ CLASS zcl_bc_uom DEFINITION
 
     METHODS is_weight               RETURNING VALUE(result) TYPE abap_bool.
 
+    METHODS get_short_text
+      IMPORTING spras         TYPE sylangu DEFAULT sy-langu
+      RETURNING VALUE(result) TYPE mseh3.
+
   PRIVATE SECTION.
     TYPES: BEGIN OF t_multiton,
              msehi TYPE msehi,
@@ -49,6 +53,14 @@ CLASS zcl_bc_uom DEFINITION
            tt_iso_multiton TYPE HASHED TABLE OF t_iso_multiton
                              WITH UNIQUE KEY primary_key COMPONENTS iso_code.
 
+    TYPES: BEGIN OF t_short_text,
+             langu TYPE sylangu,
+             mseh3 TYPE mseh3,
+           END OF t_short_text,
+
+           tt_short_text TYPE HASHED TABLE OF t_short_text
+                         WITH UNIQUE KEY primary_key COMPONENTS langu.
+
     CONSTANTS c_tabname_def TYPE tabname VALUE 'T006'.
 
     CONSTANTS: BEGIN OF c_dimid,
@@ -61,7 +73,8 @@ CLASS zcl_bc_uom DEFINITION
     DATA: gv_dimension_read    TYPE abap_bool,
           go_dimension_error   TYPE REF TO zcx_bc_dimension,
           go_dimension         TYPE REF TO zif_bc_dimension,
-          gt_dimension_uom_rng TYPE mdg_bs_mat_t_range_meinh.
+          gt_dimension_uom_rng TYPE mdg_bs_mat_t_range_meinh,
+          gt_short_text        TYPE tt_short_text.
 
     METHODS constructor
       IMPORTING iv_msehi TYPE msehi
@@ -200,5 +213,28 @@ CLASS zcl_bc_uom IMPLEMENTATION.
 
   METHOD is_weight.
     result = xsdbool( gs_def-dimid = c_dimid-mass ).
+  ENDMETHOD.
+
+  METHOD get_short_text.
+    ASSIGN gt_short_text[ KEY primary_key
+                          langu = spras ] TO FIELD-SYMBOL(<cache>).
+
+    IF sy-subrc <> 0.
+      DATA(new_cache) = VALUE t_short_text( langu = spras ).
+
+      SELECT SINGLE FROM t006a
+             FIELDS mseh3
+             WHERE spras = @new_cache-langu
+               AND msehi = @gs_def-msehi
+             INTO @new_cache-mseh3.
+
+      IF sy-subrc <> 0.
+        new_cache-mseh3 = gs_def-msehi. " Fallback
+      ENDIF.
+
+      INSERT new_cache INTO TABLE gt_short_text ASSIGNING <cache>.
+    ENDIF.
+
+    result = <cache>-mseh3.
   ENDMETHOD.
 ENDCLASS.

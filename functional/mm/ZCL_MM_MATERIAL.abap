@@ -217,13 +217,13 @@ CLASS zcl_mm_material DEFINITION
     METHODS convert_quantity
       IMPORTING from_uom      TYPE mara-meins
                 to_uom        TYPE mara-meins
-                !quantity     TYPE mengv13
+                quantity      TYPE mengv13
       RETURNING VALUE(result) TYPE mengv13
       RAISING   zcx_mm_material_unit_conv.
 
     METHODS convert_quantity_to_base_uom
       IMPORTING from_uom      TYPE mara-meins
-                !quantity     TYPE mengv13
+                quantity      TYPE mengv13
       RETURNING VALUE(result) TYPE mengv13
       RAISING   zcx_mm_material_unit_conv.
 
@@ -464,8 +464,8 @@ CLASS zcl_mm_material IMPLEMENTATION.
 
           ASSIGN COMPONENT iv_fnam OF STRUCTURE <ls_tab> TO <lv_matnr>.
 
-          CHECK           <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
+          CHECK     <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
                 AND ( NOT line_exists( gt_mara[ KEY primary_key COMPONENTS matnr = <lv_matnr> ] ) ).
 
           COLLECT VALUE range_s_matnr( option = zcl_bc_ddic_toolkit=>c_option_eq
@@ -516,10 +516,10 @@ CLASS zcl_mm_material IMPLEMENTATION.
             iv_fnam_matnr OF STRUCTURE <ls_tab> TO <lv_matnr>,
             iv_fnam_werks OF STRUCTURE <ls_tab> TO <lv_werks>.
 
-          CHECK           <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
-                AND       <lv_werks> IS ASSIGNED
-                AND       <lv_werks> IS NOT INITIAL
+          CHECK     <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
+                AND <lv_werks> IS ASSIGNED
+                AND <lv_werks> IS NOT INITIAL
                 AND ( NOT line_exists( gt_marc[ KEY primary_key COMPONENTS matnr = <lv_matnr> werks = <lv_werks> ] ) ).
 
           COLLECT VALUE:
@@ -578,8 +578,8 @@ CLASS zcl_mm_material IMPLEMENTATION.
 
           ASSIGN COMPONENT iv_fnam_matnr OF STRUCTURE <ls_tab> TO <lv_matnr>.
 
-          CHECK           <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
+          CHECK     <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
                 AND ( NOT line_exists( gt_marc[ KEY primary_key COMPONENTS matnr = <lv_matnr> werks = iv_werks ] ) ).
 
           COLLECT VALUE range_s_matnr( option = zcl_bc_ddic_toolkit=>c_option_eq
@@ -640,12 +640,12 @@ CLASS zcl_mm_material IMPLEMENTATION.
             iv_fnam_werks OF STRUCTURE <ls_tab> TO <lv_werks>.
 
           CHECK
-                          <lv_lgort> IS ASSIGNED
-                AND       <lv_lgort> IS NOT INITIAL
-                AND       <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
-                AND       <lv_werks> IS ASSIGNED
-                AND       <lv_werks> IS NOT INITIAL
+                    <lv_lgort> IS ASSIGNED
+                AND <lv_lgort> IS NOT INITIAL
+                AND <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
+                AND <lv_werks> IS ASSIGNED
+                AND <lv_werks> IS NOT INITIAL
                 AND ( NOT line_exists( gt_mard[
                                                          KEY primary_key
                                                          COMPONENTS matnr = <lv_matnr>
@@ -725,8 +725,8 @@ CLASS zcl_mm_material IMPLEMENTATION.
 
           ASSIGN COMPONENT iv_fnam_matnr OF STRUCTURE <ls_tab> TO <lv_matnr>.
 
-          CHECK           <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
+          CHECK     <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
                 AND ( NOT line_exists( gt_mlan[ KEY primary_key COMPONENTS matnr = <lv_matnr> aland = iv_aland ] ) ).
 
           COLLECT VALUE range_s_matnr( option = zcl_bc_ddic_toolkit=>c_option_eq
@@ -781,12 +781,12 @@ CLASS zcl_mm_material IMPLEMENTATION.
             iv_fnam_vkorg OF STRUCTURE <ls_tab> TO <lv_vkorg>,
             iv_fnam_vtweg OF STRUCTURE <ls_tab> TO <lv_vtweg>.
 
-          CHECK           <lv_matnr> IS ASSIGNED
-                AND       <lv_matnr> IS NOT INITIAL
-                AND       <lv_vkorg> IS ASSIGNED
-                AND       <lv_vkorg> IS NOT INITIAL
-                AND       <lv_vtweg> IS ASSIGNED
-                AND       <lv_vtweg> IS NOT INITIAL
+          CHECK     <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
+                AND <lv_vkorg> IS ASSIGNED
+                AND <lv_vkorg> IS NOT INITIAL
+                AND <lv_vtweg> IS ASSIGNED
+                AND <lv_vtweg> IS NOT INITIAL
                 AND ( NOT line_exists( gt_mvke[ KEY primary_key COMPONENTS matnr = <lv_matnr>
                                                                            vkorg = <lv_vkorg>
                                                                            vtweg = <lv_vtweg> ] ) ).
@@ -858,8 +858,8 @@ CLASS zcl_mm_material IMPLEMENTATION.
           ASSIGN COMPONENT iv_fnam_matnr OF STRUCTURE <ls_tab> TO <lv_matnr>.
 
           CHECK
-                      <lv_matnr> IS ASSIGNED
-                AND   <lv_matnr> IS NOT INITIAL
+                    <lv_matnr> IS ASSIGNED
+                AND <lv_matnr> IS NOT INITIAL
                 AND (
                 NOT line_exists( gt_mvke[
                                                    KEY primary_key
@@ -1509,42 +1509,10 @@ CLASS zcl_mm_material IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD convert_quantity.
-    TRY.
-        CHECK quantity IS NOT INITIAL. " 0 ise, 0 dönsün
-
-        IF from_uom = to_uom.
-          result = quantity.
-          RETURN.
-        ENDIF.
-
-        DATA(i_menge) = CONV ekpo-menge( abs( quantity ) ).
-        DATA(e_menge) = CONV ekpo-menge( 0 ).
-
-        ##FM_SUBRC_OK
-        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
-          EXPORTING  i_matnr              = gs_def-matnr
-                     i_in_me              = from_uom
-                     i_out_me             = to_uom
-                     i_menge              = i_menge
-          IMPORTING  e_menge              = e_menge
-          EXCEPTIONS error_in_application = 1
-                     error                = 2
-                     OTHERS               = 3.
-
-        ycx_addict_function_subrc=>raise_if_sysubrc_not_initial( 'MD_CONVERT_MATERIAL_UNIT' ).
-
-        IF quantity < 0.
-          e_menge *= -1.
-        ENDIF.
-
-        result = e_menge.
-
-      CATCH cx_root INTO DATA(conv_error).
-        RAISE EXCEPTION NEW zcx_mm_material_unit_conv( previous = conv_error
-                                                       matnr    = gs_def-matnr
-                                                       src_uom  = from_uom
-                                                       tar_uom  = to_uom ).
-    ENDTRY.
+    result = zcl_mm_material_quantity=>convert_mat_quantity( matnr    = gs_def-matnr
+                                                             menge    = quantity
+                                                             from_uom = from_uom
+                                                             to_uom   = to_uom ).
   ENDMETHOD.
 
   METHOD convert_quantity_to_base_uom.
